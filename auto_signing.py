@@ -2,8 +2,12 @@ import os
 import json
 import requests
 import sys
+import configparser
+import random
+import time
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+
 
 # read user config
 def readCongif( file ) :
@@ -15,11 +19,10 @@ def readCongif( file ) :
 
 # login
 def loginMyntu( session , userInfo ) :
-    #headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'}
     website = "https://my.ntu.edu.tw/"
     
     # get ASP.NET_SessionId & citrix_ns_id at myntu
-    request = session.get(website, headers = session.headers)
+    request = session.get( website, headers = session.headers )
     if request.status_code != 200:
         raise Exception("Login Error: please check your network connection!")
     # aspnet_cookies = request.cookies
@@ -129,11 +132,22 @@ def signOut( session ) :
     return messageDict
     
 if __name__ == "__main__" :
-
+    # get argument & config
     action = sys.argv[1]
+    config = configparser.ConfigParser()
+    config.read("config.ini")
+    if "DEFAULT" not in config :
+        raise Exception("Config Error: section \"DEFAULT\" not find.")
+    randomDelay = config["DEFAULT"]["RandomDelay"].lower()
+    maxDelayTime = float(config["DEFAULT"]["MaxDelayTime"])
     
     # load user info.
     userDict = readCongif( "./user.conf" )
+    
+    # set delay time
+    if randomDelay == "true" :
+        delay = random.random() * maxDelayTime * 60  # secs
+        time.sleep( delay )  # delay before singin/signout
     
     try :
         # create session
