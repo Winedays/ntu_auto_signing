@@ -1,8 +1,13 @@
 import os
 import json
 import requests
+import sys
+import configparser
+import random
+import time
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+
 
 # read user config
 def readCongif( file ) :
@@ -14,11 +19,10 @@ def readCongif( file ) :
 
 # login
 def loginMyntu( session , userInfo ) :
-    #headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'}
     website = "https://my.ntu.edu.tw/"
     
     # get ASP.NET_SessionId & citrix_ns_id at myntu
-    request = session.get(website, headers = session.headers)
+    request = session.get( website, headers = session.headers )
     if request.status_code != 200:
         raise Exception("Login Error: please check your network connection!")
     # aspnet_cookies = request.cookies
@@ -94,18 +98,18 @@ def signIn( session ) :
     session.headers['X-Requested-With'] = 'XMLHttpRequest'
     
     # 簽到
-    data = {'type': 6, 't': 2, 'otA': 0} 
+    data = {'type': 6, 't': 1, 'otA': 0} 
     request = session.post(url, data=data, headers = session.headers, cookies = session.cookies)
     if request.status_code != 200 :
         raise Exception("SignIn Error: please check your network connection!")
     messageStr = request.text
     messageDict = json.loads( messageStr.replace("\r","").replace("\n","") )
     messageDict = messageDict[0]
-    request = session.post(url, data=data, headers = session.headers, cookies = session.cookies, allow_redirects=False)
-    
+    # requests.text example : [{'t': 1, 'msg': '簽退成功(r2)。', 'd': '2020-11-23 17:59:59', 'on': '2020-11-23 08:59:59', 'off': '2020-11-23 17:59:59', 'name': 'XXX(T0000)', 'ws': '08:00', 'we': '17:00', 'wb': '60'}]
+    return messageDict
 
 # sign out
-def signout( session ) :
+def signOut( session ) :
     website = "https://my.ntu.edu.tw/attend/"
     
     # headers
@@ -127,16 +131,30 @@ def signout( session ) :
     # requests.text example : [{'t': 1, 'msg': '簽退成功(r2)。', 'd': '2020-11-23 17:59:59', 'on': '2020-11-23 08:59:59', 'off': '2020-11-23 17:59:59', 'name': 'XXX(T0000)', 'ws': '08:00', 'we': '17:00', 'wb': '60'}]
     return messageDict
     
-if __name__ == "__main__" :  
+if __name__ == "__main__" :
+    # get argument & config
+    action = sys.argv[1]
+    config = configparser.ConfigParser()
+    config.read("config.ini")
+    if "DEFAULT" not in config :
+        raise Exception("Config Error: section \"DEFAULT\" not find.")
+    randomDelay = config["DEFAULT"]["RandomDelay"].lower()
+    maxDelayTime = float(config["DEFAULT"]["MaxDelayTime"])
     
     # load user info.
     userDict = readCongif( "./user.conf" )
+    
+    # set delay time
+    if randomDelay == "true" :
+        delay = random.random() * maxDelayTime * 60  # secs
+        time.sleep( delay )  # delay before singin/signout
     
     try :
         # create session
         session = requests.Session()
         session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'
         session.headers['Connection'] = 'keep-alive'
+
         # login myntu
         attendPages = loginMyntu( session , userDict )
         
@@ -161,11 +179,13 @@ if __name__ == "__main__" :
             viewState = soup.find("input", id="__VIEWSTATE", type="hidden").get("value")
             viewStateGenerator = soup.find("input", id="__VIEWSTATEGENERATOR", type="hidden").get("value")
         
-            # signIn();
-            messageDict = signout(session);
+            if action == "signin" :
+                messageDict = signIn(session);
+            elif action == "signout" :
+                messageDict = signOut(session);
+            else :
+                messageDict = {"Error": "Action Wrong"}
             print(messageDict)
-            pass
-    
     except Exception as e :
         print(e)
         # raise Exception("Exception Error as "+e)
