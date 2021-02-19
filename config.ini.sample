@@ -1,0 +1,10 @@
+[TIME_DELAY]
+# delay time in mins 
+RandomDelay = true
+MaxDelayTime = 5
+
+[MAIL]
+Host = smtp.gmail.com
+TlsPort = 587
+User = <username@gmail.com>
+Password = <userpassword>
