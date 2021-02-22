@@ -234,7 +234,7 @@ if __name__ == "__main__" :
     # set delay time
     if randomDelay == "true" :
         delay = random.random() * maxDelayTime * 60  # secs
-        # time.sleep( delay )  # delay before singin/signout
+        time.sleep( delay )  # delay before singin/signout
     
     messageDict = None
     checkDict = None
