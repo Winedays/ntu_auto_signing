@@ -16,21 +16,37 @@ from email.mime.multipart import MIMEMultipart
 # set Argument
 def setArgument() :
     parser = argparse.ArgumentParser()
+    # optional argument
+    parser.add_argument("-c", "--config", default="./config.ini", type=str, help = "config file path.")
     # position argument
     parser.add_argument("action", type=str, choices=["signin", "signout"], help = "action of sign in or sign out.")
     args = parser.parse_args()
     return args
 
-# read user config
-def readCongif( file: str ) :
-    with open( file , 'r' , encoding="utf-8" ) as f :
-        user = f.readline().strip()
-        password = f.readline().strip()
-    userDict = {'user': user, 'pass': password}  # {'user': <name>, 'pass': <password>} 
+# load user info. from config
+def loadUserInfo( config: configparser.ConfigParser ) :
+    if "USER" not in config :
+        raise Exception("Config Error: section \"USER\" not find.")
+    userName = config["USER"]["UserName"]
+    password = config["USER"]["Password"]
+    userDict = {'user': userName, 'pass': password}
     return userDict
 
+# load & run time delay setting from config
+def runTimeDelaySetting( config: configparser.ConfigParser ) :
+    if "TIME_DELAY" not in config :
+        raise Exception("Config Error: section \"TIME_DELAY\" not find.")
+    randomDelay = config["TIME_DELAY"]["RandomDelay"].lower()
+    maxDelayTime = float(config["TIME_DELAY"]["MaxDelayTime"])
+
+    # set delay time
+    if randomDelay == "true" :
+        delay = random.random() * maxDelayTime * 60  # secs
+        time.sleep( delay )  # delay before singin/signout
+    return
+
 # prepare mail message & send it
-def sendErrorMessageMail( checkMessage: str, messageDict: str, mailConfig: dict ) :
+def sendErrorMessageMail( checkMessage: str, messageDict: dict, mailConfig: dict ) :
     mailDict = {'host': None, 'user': None, 'password': None, 'sender': None,
                 'subject': None, 'from': None, 'to': None, 'body': None}
     mail_subject = "NTU Auto Singing Wraning Massage"
@@ -59,7 +75,7 @@ def sendErrorMessageMail( checkMessage: str, messageDict: str, mailConfig: dict 
     # send mail
     sendMail( mailDict )
     return ;
-    
+
 # send error massage mail
 def sendMail( mailDict: dict ) :
     mail_host = mailDict['host']
@@ -85,6 +101,13 @@ def sendMail( mailDict: dict ) :
     print( "Error Massage Mail Sent to " + mailDict['to'] )
     return ;
 
+# set up session key, value
+def sessionInit() :
+    session = requests.Session()
+    session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'
+    session.headers['Connection'] = 'keep-alive'
+    return session
+
 # login
 def loginMyntu( session , userInfo ) :
     website = "https://my.ntu.edu.tw/"
@@ -107,13 +130,13 @@ def loginMyntu( session , userInfo ) :
         raise Exception("Login Error: please check your network connection!")
     request.encoding = 'utf-8'
     redirects = urljoin( website, request.headers["Location"] )
-    
+
     # get PHPSESSID from s/login2/p6.php
     request = session.get(redirects, headers = session.headers, cookies = session.cookies, allow_redirects=False)
     if request.status_code != 302:
         raise Exception("Login Error: please check your network connection!")
     redirects = request.headers["Location"]
-    
+
     session.headers['Host'] = 'web2.cc.ntu.edu.tw'
     session.headers['Referer'] = 'https://my.ntu.edu.tw/attend/ssi.aspx'
     request = session.get(redirects, headers = session.headers, cookies = session.cookies, allow_redirects=False)
@@ -121,14 +144,14 @@ def loginMyntu( session , userInfo ) :
         raise Exception("Login Error: please check your network connection!")
     # php_cookies = requests.cookies
     # php_sessid = php_cookies.get("PHPSESSID")
-    
+
     # login myntu
     url = "https://web2.cc.ntu.edu.tw/p/s/login2/p1.php"
     session.headers['Host'] = 'web2.cc.ntu.edu.tw'
     session.headers['Origin'] = 'https://web2.cc.ntu.edu.tw'
     session.headers['Referer'] = 'https://web2.cc.ntu.edu.tw/p/s/login2/p1.php'
     session.headers['Content-Type'] = 'application/x-www-form-urlencoded'
-    
+
     userInfo['Submit'] = '登入' # 登入,%E7%99%BB%E5%85%A5
     request = session.post(url, data=userInfo, headers = session.headers, cookies = session.cookies, allow_redirects=False)
     if request.status_code != 302:
@@ -149,13 +172,13 @@ def loginMyntu( session , userInfo ) :
     request = session.get(redirects, headers = session.headers, cookies = session.cookies, allow_redirects=False)
     if request.status_code != 302:
         raise Exception("Login Error: please check your network connection!")
-    redirects = urljoin( website, request.headers["Location"] ) # directs to attend system page after login
+    # redirects = urljoin( website, request.headers["Location"] ) # directs to attend system page after login
     
     session.headers.pop('Referer', None)
-    return redirects
+    return
 
-# sign in
-def signIn( session ) :
+# sign in/out
+def signing( session, action ) :
     website = "https://my.ntu.edu.tw/attend/"
     
     url = "https://my.ntu.edu.tw/attend/ajax/signInR2.ashx"
@@ -164,45 +187,29 @@ def signIn( session ) :
     session.headers['Referer'] = 'https://my.ntu.edu.tw/attend/ssi.aspx'
     session.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8'
     session.headers['X-Requested-With'] = 'XMLHttpRequest'
-    
-    # 簽到
-    data = {'type': 6, 't': 1, 'otA': 0} 
+
+    # 簽到退
+    data = {'type': 6, 'otA': 0}
+    if str(action).lower() == "signin" :
+        data['t'] = 1
+    elif str(action).lower() == "signout" :
+        data['t'] = 2
+    else :
+        raise Exception("SignIn/Out Error: unknow action " + str(action) + "!")
+
     request = session.post(url, data=data, headers = session.headers, cookies = session.cookies)
     if request.status_code != 200 :
-        raise Exception("SignIn Error: please check your network connection!")
+        raise Exception("SignIn/Out Error: please check your network connection!")
     messageStr = request.text
     messageDict = json.loads( messageStr.replace("\r","").replace("\n","") )
     messageDict = messageDict[0]
     # requests.text example : [{'t': 1, 'msg': '簽退成功(r2)。', 'd': '2020-11-23 17:59:59', 'on': '2020-11-23 08:59:59', 'off': '2020-11-23 17:59:59', 'name': 'XXX(T0000)', 'ws': '08:00', 'we': '17:00', 'wb': '60'}]
     return messageDict
 
-# sign out
-def signOut( session ) :
-    website = "https://my.ntu.edu.tw/attend/"
-    
-    # headers
-    url = "https://my.ntu.edu.tw/attend/ajax/signInR2.ashx"
-    session.headers['Host'] = 'my.ntu.edu.tw'
-    session.headers['Origin'] = 'https://my.ntu.edu.tw'
-    session.headers['Referer'] = 'https://my.ntu.edu.tw/attend/ssi.aspx'
-    session.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8'
-    session.headers['X-Requested-With'] = 'XMLHttpRequest'
-    
-    # 簽退
-    data = {'type': 6, 't': 2, 'otA': 0} 
-    request = session.post(url, data=data, headers = session.headers, cookies = session.cookies)
-    if request.status_code != 200 :
-        raise Exception("SignOut Error: please check your network connection!")
-    messageStr = request.text
-    messageDict = json.loads( messageStr.replace("\r","").replace("\n","") )
-    messageDict = messageDict[0]
-    # requests.text example : [{'t': 1, 'msg': '簽退成功(r2)。', 'd': '2020-11-23 17:59:59', 'on': '2020-11-23 08:59:59', 'off': '2020-11-23 17:59:59', 'name': 'XXX(T0000)', 'ws': '08:00', 'we': '17:00', 'wb': '60'}]
-    return messageDict
-    
 # check is sign in/out success & return error massage if failed
 def checkSignSuccess( messageDict ) :
     checkDict = {'success': False, 'massage': ""}
-    if 't' not in messageDict :
+    if not messageDict or 't' not in messageDict :
         checkDict['massage'] = "Wraning: Got a unknow request."
     elif messageDict['t'] == 1 :
         checkDict['success'] = True
@@ -216,69 +223,73 @@ def checkSignSuccess( messageDict ) :
         else :
             checkDict['massage'] = "Error: Sign in/out failed"
     return checkDict ;
+
+# check is singin or signout button exist on AttendPage
+def checkLoginSuccessOnAttendPage( session ) :
+    # check is login success
+    attendPages = 'https://my.ntu.edu.tw/attend/ssi.aspx'
+    session.headers['Host'] = 'my.ntu.edu.tw'
+    session.headers['Referer'] = 'https://web2.cc.ntu.edu.tw/p/s/login2/p1.php'
+    # back to attend sys. page
+    request = session.get(attendPages, headers = session.headers, cookies = session.cookies)
+    if request.status_code != 200:
+        raise Exception("Login Error: please check your network connection!")
+    soup = BeautifulSoup(request.text, 'html.parser')
+    # check is signin/signout btn. exisit
+    btnDiv = soup.find("div", "jumbotron mid bc jumbotronfix")
+    if not btnDiv :
+        return False
+    btnList = btnDiv.find_all('a')
+    if len(btnList) != 2 :
+        return False
+    if btnList[0].get("id") == "btSign" and btnList[1].get("id") == "btSign2" :
+        return True
+    return False
     
 if __name__ == "__main__" :
-    # get argument & config
+
     args = setArgument()
+    # read argument
     action = args.action
+    configFile = args.config
+    # check argument
+    if not os.path.isfile( configFile ) :
+        raise Exception("Config Error: file + " + configFile + " not find!")
+
     config = configparser.ConfigParser()
-    config.read("config.ini")
-    if "TIME_DELAY" not in config :
-        raise Exception("Config Error: section \"TIME_DELAY\" not find.")
-    randomDelay = config["TIME_DELAY"]["RandomDelay"].lower()
-    maxDelayTime = float(config["TIME_DELAY"]["MaxDelayTime"])
-    
+    config.read(configFile)
+
     # load user info.
-    userDict = readCongif( "./user.conf" )
-    
-    # set delay time
-    if randomDelay == "true" :
-        delay = random.random() * maxDelayTime * 60  # secs
-        time.sleep( delay )  # delay before singin/signout
-    
+    userDict = loadUserInfo( config )
+
+    # run time delay setting
+    runTimeDelaySetting( config )
+
     messageDict = None
     checkDict = None
     try :
         # create session
-        session = requests.Session()
-        session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'
-        session.headers['Connection'] = 'keep-alive'
-        
+        session = sessionInit()
+
         # login myntu
-        attendPages = loginMyntu( session , userDict )
+        loginMyntu( session , userDict )
         
         # check is login success
-        session.headers['Host'] = 'my.ntu.edu.tw'
-        session.headers['Referer'] = 'https://web2.cc.ntu.edu.tw/p/s/login2/p1.php'
-        # back to attend sys. page
-        request = session.get(attendPages, headers = session.headers, cookies = session.cookies)
-        if request.status_code != 200:
-            raise Exception("Login Error: please check your network connection!")
-        soup = BeautifulSoup(request.text, 'html.parser')
-        # check is signin/signout btn. exisit
-        btnDiv = soup.find("div", "jumbotron mid bc jumbotronfix")
-        if not btnDiv :
-            raise Exception("Login Error: please check your user name or password!")
-        btnList = btnDiv.find_all('a')
-        if len(btnList) != 2 :
-            raise Exception("Login Error: please check your user name or password!")
-        
-        # signin / signout
-        if btnList[0].get("id") == "btSign" and btnList[1].get("id") == "btSign2" :
-            # viewState = soup.find("input", id="__VIEWSTATE", type="hidden").get("value")
-            # viewStateGenerator = soup.find("input", id="__VIEWSTATEGENERATOR", type="hidden").get("value")
-            
-            if action == "signin" :
-                messageDict = signIn(session);
-            elif action == "signout" :
-                messageDict = signOut(session);
+        isLogin = checkLoginSuccessOnAttendPage( session )
+        if isLogin :
+            if action == "signin" or action == "signout" :
+                messageDict = signing(session, action);
             else :
                 messageDict = {'t': -1, "msg": "Wrong Signing Action"}
             print(messageDict)
-            # check is signing success
-            checkDict = checkSignSuccess( messageDict )
-            
+        else :
+            raise Exception("Login Error: please check your user name or password!")
+
+        # check is signing success
+        checkDict = checkSignSuccess( messageDict )
+
     except Exception as e :
+        checkDict = dict()
         checkDict['success'] = False
         checkDict['massage'] = "Exception Error : " + str(e)
         messageDict = {'t': -1, "msg": traceback.format_exc()}
