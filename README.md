@@ -20,14 +20,24 @@ git clone 下載程式到本機端 / 直接從 github [下載壓縮檔](https://
 git clone https://github.com/Winedays/ntu_auto_signing.git
 ```
 
-將 `user.conf.sample` 改名成 `user.conf`，打開檔案在第一行填入自己的帳號，第二行填入帳號的密碼
+修改 `config.ini` 檔案設定，`[TIME_DELAY]` 用於設定延遲打卡功能，當 `RandomDelay = True` 時將啟用，延遲時間每次隨機決定且上限為 `MaxDelayTime (mins)`。`[MAIL]` 用於設定 email 通知，將 `User` 及 `Password` 改為自己的 gmail 帳號密碼。`[USER]` 為 MyNTU 帳號資料，將 `UserName` 及 `Password` 改為自己的帳號密碼。
 ```
-testuser # <user name> 改成帳號
-123456  # <passowrd> 改成密碼
+[TIME_DELAY]
+# delay time in mins
+RandomDelay = true
+MaxDelayTime = 5
+
+[MAIL]
+Host = smtp.gmail.com
+TlsPort = 587
+User = <gmail 帳號>@gmail.com
+Password = <gmail 密碼>
+
+[USER]
+UserName = <myntu 帳號>
+Password = <myntu 密碼>
 ```
 
-`config.ini` 檔案用於設定隨機時間打卡功能，`RandomDelay = True` 時將啟用延遲打卡功能，延遲時間每次隨機決定且上限為 `MaxDelayTime (mins)`。
-- e.g. `MaxDelayTime = 5`，於 8 點執行程式，將隨機在 8:00~8:05 分打卡
 
 透過 python 執行程式，當輸入參數為 `signin` 時會執行簽到，參數為 `signout` 時會執行簽退
 ```python
@@ -37,8 +47,15 @@ python auto_signing.py signin
 python auto_signing.py signout
 ```
 
+## 延遲打卡功能
+延遲打卡功能用於避免每天都在相同的時間點打卡，令程式每天的打卡時間具有隨機性，當此功能啟用時程式將在執行後隨機延遲一定的時間後才會進行打卡動作，透過設定 `MaxDelayTime` 能指定最大延遲時間 (分鐘)  
+* e.g.`RandomDelay = true, MaxDelayTime = 5`，於 8 點執行程式，將隨機在 8:00~8:05 分打卡
+
+## Email 通知功能
+Email 通知功能用於在程式打卡失敗時發送 email 進行通知，提醒使用者打卡失敗並提供相關的錯誤信息，此功能預設使用 gmail 信箱進行通知，若需要使用其他信箱，需自行更改合適的 `Host` 及 `TlsPort` 設定
+
 ## 排程設定
-必須要在程式所在的目錄執行程式，否則 `user.conf` 檔的讀取會出錯  
+必須要在程式所在的目錄執行程式，否則 `config.ini` 檔的讀取會出錯  
 請自行注意 python 環境的相關問題
 * Linux
     * 以 cron 設定固定時間執行程式
@@ -58,7 +75,6 @@ python auto_signing.py signout
 
 ## Todo
 - ~~加入隨機延遲，不會每天都在同一個時間打卡~~
-- 加入 email 通知，打卡失敗時可以提醒你去手動打卡
+- ~~加入 email 通知，打卡失敗時可以提醒你去手動打卡~~
 - 封裝成執行檔，不需要 python 就可以執行程式
-- 支援一次替多個帳號打卡
 - 自動判斷時間決定打卡行為
