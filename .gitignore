@@ -1,6 +1,7 @@
 __pycache__/
 # test file
 log
+auto_signing_v*.py
 
 # private file
-user.conf
+config.ini.adler
